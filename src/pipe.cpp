@@ -31,13 +31,11 @@ std::vector<std::byte> sdb::pipe::read()
 
     auto bytes = reinterpret_cast<std::byte*>(buffer);
 
-    std::println("Read {} bytes", count);
     return std::vector<std::byte>(bytes, bytes + count);
 }
 
 void sdb::pipe::write(std::byte* bytes, std::size_t count)
 {
-    std::println("Writing {} bytes", count);
     if (::write(fds_[cWriteFd], bytes, count) < 0)
     {
         error::send_errno("Could not write to pipe"); 
