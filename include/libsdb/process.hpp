@@ -4,6 +4,7 @@
 #include <memory>
 
 #include <sys/types.h>
+#include <signal.h>
 
 #ifndef linux
 // Bit dubious, allow me to compile on MacOS
@@ -11,7 +12,6 @@ using pid_t = int;
 using ptrace_request = int;
 using sig = int;
 inline long ptrace(ptrace_request request, pid_t pid, void *addr, void *data) { return 0l; }
-inline void kill(pid_t pid, sig signal) {}
 inline const char* sigabbrev_np(sig signal) { return ""; }
 #define PTRACE_ATTACH 0
 #define PTRACE_CONT 0
