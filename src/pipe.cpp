@@ -4,10 +4,11 @@
 #include <unistd.h>
 #include <fcntl.h>
 
+#include <print>
 #include <utility>
 
 #ifndef linux
-int pipe2(int*, int) { return 0; }
+int pipe2(int*, int) { std::println("Not instantiating a pipe"); return 0; }
 #endif
 
 sdb::pipe::pipe(bool close_on_exec)
@@ -22,19 +23,21 @@ std::vector<std::byte> sdb::pipe::read()
 {
     static constexpr auto cBufferSize{1024};
     char buffer[cBufferSize];
-    int chars_read;
-    if ((chars_read = ::read(fds_[cReadFd], buffer, sizeof(buffer)) < 0))
+    int count = ::read(fds_[cReadFd], buffer, sizeof(buffer));
+    if (count < 0)
     {
         error::send_errno("Could not read from pipe");
     }
 
     auto bytes = reinterpret_cast<std::byte*>(buffer);
 
-    return std::vector<std::byte>(bytes, bytes + chars_read);
+    std::println("Read {} bytes", count);
+    return std::vector<std::byte>(bytes, bytes + count);
 }
 
 void sdb::pipe::write(std::byte* bytes, std::size_t count)
 {
+    std::println("Writing {} bytes", count);
     if (::write(fds_[cWriteFd], bytes, count) < 0)
     {
         error::send_errno("Could not write to pipe"); 
