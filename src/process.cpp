@@ -1,4 +1,5 @@
 #include <libsdb/process.hpp>
+#include <libsdb/pipe.hpp>
 #include <libsdb/error.hpp>
 
 #include <sys/ptrace.h>
@@ -8,6 +9,16 @@
 
 #include <format>
 #include <print>
+
+namespace
+{
+void exit_with_perror(sdb::pipe& channel, const std::string& prefix)
+{
+    auto message = std::format("{}: {}", prefix, std::strerror(errno));
+    channel.write(reinterpret_cast<std::byte*>(message.data()), message.size());
+    exit(-1);
+}
+}
 
 sdb::stop_reason::stop_reason(int wait_status)
 {
@@ -31,6 +42,7 @@ sdb::stop_reason::stop_reason(int wait_status)
 
 std::unique_ptr<sdb::process> sdb::process::launch(std::filesystem::path path)
 {
+    pipe channel(true); // We have to call pipe before we call fork()
     pid_t pid;
     if ((pid = fork()) < 0)
     {
@@ -40,14 +52,30 @@ std::unique_ptr<sdb::process> sdb::process::launch(std::filesystem::path path)
     if (pid == 0)
     {
         // We are in the child process
+        channel.close_read();
         if (ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) < 0)
         {
-            error::send_errno("Tracing failed");
+            exit_with_perror(channel, "Tracing failed");
         }
 
         if (execlp(path.c_str(), path.c_str(), nullptr) < 0)
         {
-            error::send_errno("Exec failed");
+            exit_with_perror(channel, "Exec failed");
+        }
+    }
+    else
+    {
+        // We are in the parent process
+        channel.close_write();
+        auto data = channel.read();
+        channel.close_read();
+
+        if (!data.empty())
+        {
+            waitpid(pid, nullptr, 0);
+            auto chars = reinterpret_cast<char*>(data.data());
+            // TODO: This is size() + 1 in the book, but is not guaranteed legit
+            error::send({chars, chars + data.size()});
         }
     }
 
