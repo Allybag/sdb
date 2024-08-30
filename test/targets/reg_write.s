@@ -1,9 +1,3 @@
-.global main
-
-.section .data
-
-.section .text
-
 # This is AT&T syntax assembly, default on GCC
 # % prefix means a register
 # $ prefix means a constant
@@ -33,11 +27,43 @@
 # movq: Move quad word, copy 64 bits from source to destination
 # push: Copy the value from a register to the top of the stack
 # popq: Copy the value from the top of the stack to a register
+
+# syscall: Call the syscall by id, read from rax, overwrite rax with result
+
+# Constants
+SYSCALL_GET_PID EQU 39
+SYSCALL_KILL    EQU 62
+
+SIGTRAP         EQU 5
+
+# Declare main as a symbol
+.global main
+
+# Global data
+.section .data
+
+# Code:
+.section .text
+
+.macro trap
+    movq $SYSCALL_KILL, %rax
+    movq %r12, %rdi
+    movq $SIGTRAP, %rsi
+    syscall
+.endm
+
 main:
     # Function prologue
     push %rbp
     movq %rsp, %rbp
+
     # Function body
+    # Get pid
+    movq $SYSCALL_GET_PID, %rax
+    syscall
+    movq %rax, %r12
+
+    trap
 
     # Function epilogue
     popq %rbp
