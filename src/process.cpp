@@ -40,7 +40,7 @@ sdb::stop_reason::stop_reason(int wait_status)
 
 }
 
-std::unique_ptr<sdb::process> sdb::process::launch(std::filesystem::path path, bool attach)
+std::unique_ptr<sdb::process> sdb::process::launch(std::filesystem::path path, bool attach, std::optional<int> stdout_replacement)
 {
     pipe channel(true); // We have to call pipe before we call fork()
     pid_t pid;
@@ -53,6 +53,15 @@ std::unique_ptr<sdb::process> sdb::process::launch(std::filesystem::path path, b
     {
         // We are in the child process
         channel.close_read();
+
+        if (stdout_replacement.has_value())
+        {
+            close(STDOUT_FILENO);
+            if (dup2(stdout_replacement.value(), STDOUT_FILENO) < 0)
+            {
+                exit_with_perror(channel, "Failed to replace stdout");
+            }
+        }
         if (attach && ptrace(PTRACE_TRACEME, 0, nullptr, nullptr) < 0)
         {
             exit_with_perror(channel, "Tracing failed");

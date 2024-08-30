@@ -2,11 +2,12 @@
 
 #include <libsdb/registers.hpp>
 
-#include <filesystem>
-#include <memory>
-
 #include <sys/types.h>
 #include <signal.h>
+
+#include <filesystem>
+#include <memory>
+#include <optional>
 
 #ifndef linux
 // Bit dubious, allow me to compile on MacOS
@@ -48,7 +49,7 @@ public:
 
     ~process();
 
-    static std::unique_ptr<process> launch(std::filesystem::path path, bool attach = true);
+    static std::unique_ptr<process> launch(std::filesystem::path path, bool attach = true, std::optional<int> stdout_replacement = std::nullopt);
     static std::unique_ptr<process> attach(pid_t pid);
 
     void resume();

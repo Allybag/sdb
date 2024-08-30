@@ -1,8 +1,7 @@
 cmake_minimum_required(VERSION 3.19)
 
-project("sdb" LANGUAGES CXX)
+project("sdb" LANGUAGES CXX ASM)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
 
 include(CTest)
 
