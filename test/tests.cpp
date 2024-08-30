@@ -1,6 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 #include <libsdb/process.hpp>
 #include <libsdb/error.hpp>
+#include <libsdb/pipe.hpp>
+#include <libsdb/bit.hpp>
 
 #include <sys/types.h>
 
@@ -42,14 +44,14 @@ TEST_CASE("Launching non existent program", "process")
 TEST_CASE("Attaching", "process")
 {
     auto target = process::launch("targets/run_endlessly", false);
-    auto proc = process::attach(target->pid()); 
+    auto proc = process::attach(target->pid());
     static constexpr char cStoppedUnderTrace{'t'};
-    REQUIRE(get_process_status(target->pid() == cStoppedUnderTrace)); 
+    REQUIRE(get_process_status(target->pid() == cStoppedUnderTrace));
 }
 
 TEST_CASE("Attaching invalid pid", "process")
 {
-    REQUIRE_THROWS_AS(process::attach(0), error); 
+    REQUIRE_THROWS_AS(process::attach(0), error);
 }
 
 TEST_CASE("Resuming", "process")
@@ -57,22 +59,22 @@ TEST_CASE("Resuming", "process")
     static constexpr char cRunning{'R'};
     static constexpr char cSleeping{'S'};
     {
-        auto proc = process::launch("targets/run_endlessly"); 
+        auto proc = process::launch("targets/run_endlessly");
         proc->resume();
 
-        auto status = get_process_status(proc->pid()); 
+        auto status = get_process_status(proc->pid());
         auto success = (status == cRunning || status == cSleeping);
-        REQUIRE(success); 
+        REQUIRE(success);
     }
 
     {
-        auto target = process::launch("targets/run_endlessly", false); 
+        auto target = process::launch("targets/run_endlessly", false);
         auto proc = process::attach(target->pid());
         proc->resume();
 
-        auto status = get_process_status(proc->pid()); 
+        auto status = get_process_status(proc->pid());
         auto success = (status == cRunning || status == cSleeping);
-        REQUIRE(success); 
+        REQUIRE(success);
     }
 }
 
@@ -82,7 +84,7 @@ TEST_CASE("Resume already terminated", "process")
         auto proc = process::launch("targets/end_immediately");
         proc->resume();
         proc->wait_on_signal();
-        REQUIRE_THROWS_AS(proc->resume(), error); 
+        REQUIRE_THROWS_AS(proc->resume(), error);
     }
 
     {
@@ -90,6 +92,26 @@ TEST_CASE("Resume already terminated", "process")
         auto proc = process::attach(target->pid());
         proc->resume();
         proc->wait_on_signal();
-        REQUIRE_THROWS_AS(proc->resume(), error); 
+        REQUIRE_THROWS_AS(proc->resume(), error);
     }
+}
+
+TEST_CASE("Write register", "register")
+{
+    bool close_on_exec = false;
+    sdb::pipe channel(close_on_exec);
+    auto proc = process::launch("targets/reg_write", true, channel.get_write());
+    channel.close_write();
+
+    proc->resume();
+    proc->wait_on_signal();
+
+    auto& regs = proc->get_registers();
+    regs.write_by_id(register_id::rsi, 0xcafecafe);
+
+    proc->resume();
+    proc->wait_on_signal();
+
+    auto output = channel.read();
+    REQUIRE(to_string_view(output) == "0xcafecafe");
 }

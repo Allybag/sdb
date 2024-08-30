@@ -27,20 +27,31 @@
 # movq: Move quad word, copy 64 bits from source to destination
 # push: Copy the value from a register to the top of the stack
 # popq: Copy the value from the top of the stack to a register
+# leaq: Load effective address quadword: copy address of source to destination
 
 # syscall: Call the syscall by id, read from rax, overwrite rax with result
+# printf : print, rax contains number of vector registers containing arguments
+# fflush : First argument is probably stream index somehow, 0 means all streams
+
+# Directives
+# .asciz: Encode the given string in ASCII with null terminator
+
+# Unknowns
+# %rip: use RIP-relative addressing, required when assembling with -pie ??
+# @plt: use the Procedure Linkage Table, used to call functions in shared libraries
 
 # Constants
-SYSCALL_GET_PID EQU 39
-SYSCALL_KILL    EQU 62
+SYSCALL_GET_PID = 39
+SYSCALL_KILL    = 62
 
-SIGTRAP         EQU 5
+SIGTRAP         = 5
 
 # Declare main as a symbol
 .global main
 
 # Global data
 .section .data
+hex_format: .asciz "%#x"
 
 # Code:
 .section .text
@@ -62,6 +73,13 @@ main:
     movq $SYSCALL_GET_PID, %rax
     syscall
     movq %rax, %r12
+
+    # Print contents of rsi
+    leaq hex_format(%rip), %rdi
+    movq $0, %rax
+    call printf@plt
+    movq $0, %rdi
+    call fflush@plt
 
     trap
 
