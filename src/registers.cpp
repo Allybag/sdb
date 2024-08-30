@@ -9,7 +9,7 @@
 namespace
 {
 template <typename T>
-std::byte128 widen(const sdb::register_info& info, T t)
+sdb::byte128 widen(const sdb::register_info& info, T t)
 {
     using namespace sdb;
     if constexpr (std::is_floating_point_v<T>)
@@ -98,7 +98,7 @@ void sdb::registers::write(const register_info& info, value val)
         }
     }, val);
 
-    if (info.type == register_type::fpr)
+    if (info.type == register_type::Fpr)
     {
         proc_->write_fprs(data_.i387); 
     }
