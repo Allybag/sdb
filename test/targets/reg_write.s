@@ -22,6 +22,12 @@
 # r14: Callee saved general register
 # r15: Callee saved general register
 
+# SYSV ABI SIMD Registers
+# mm0: A 64 bit SIMD register
+
+# SYSV ABI SSE SIMD Registers
+# xmm0: A 128 bit wide SIMD register
+
 # Opcodes
 # Instructions which use the stack will change the value of the rsp register
 # movq: Move quad word, copy 64 bits from source to destination
@@ -39,6 +45,7 @@
 # Unknowns
 # %rip: use RIP-relative addressing, required when assembling with -pie ??
 # @plt: use the Procedure Linkage Table, used to call functions in shared libraries
+# fstpt: Takes an argument and pops st0 from FPU stack somehow?
 
 # Constants
 SYSCALL_GET_PID = 39
@@ -52,6 +59,8 @@ SIGTRAP         = 5
 # Global data
 .section .data
 hex_format: .asciz "%#x"
+float_format: .asciz "%.2f"
+long_float_format: .asciz "%.2Lf"
 
 # Code:
 .section .text
@@ -69,7 +78,7 @@ main:
     movq %rsp, %rbp
 
     # Function body
-    # Get pid and store in r12
+    # Get pid and store in r12, which we need for trap
     movq $SYSCALL_GET_PID, %rax
     syscall
     movq %rax, %r12
@@ -82,6 +91,43 @@ main:
     call printf@plt
     movq $0, %rdi
     call fflush@plt
+
+    trap
+
+    # Print contents of mm0
+    movq %mm0, %rsi
+    lea hex_format(%rip), %rdi
+    movq $0, %rax
+    call printf@plt
+    movq $0, %rdi
+    call fflush@plt
+
+    trap
+
+    # Print contents of xmm0
+    # We set rax to 1 before calling printf,
+    # Which means to print the first vector argument
+    # which is xmm0
+    leaq float_format(%rip), %rdi
+    movq $1, %rax
+    call printf@plt
+    movq $0, %rdi
+    call fflush@plt
+
+    trap
+
+    # Print contents of st0
+    # Allocate 16 bytes on stack to store st0
+    subq $16, %rsp
+    # Pop st0 from the top of FPU stack
+    fstpt (%rsp)
+    leaq long_float_format(%rip), %rdi
+    movq $0, %rax
+    call printf@plt
+    movq $0, %rdi
+    call fflush@plt
+    # Restore the stack pointer to original position
+    addq $16, %rsp
 
     trap
 

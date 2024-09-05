@@ -114,4 +114,39 @@ TEST_CASE("Write register", "register")
 
     auto output = channel.read();
     REQUIRE(to_string_view(output) == "0xcafecafe");
+
+    regs.write_by_id(register_id::mm0, 0xba5eba11);
+
+    proc->resume();
+    proc->wait_on_signal();
+
+    output = channel.read();
+    REQUIRE(to_string_view(output) == "0xba5eba11");
+
+    regs.write_by_id(register_id::xmm0, 42.42);
+
+    proc->resume();
+    proc->wait_on_signal();
+
+    output = channel.read();
+    REQUIRE(to_string_view(output) == "42.42");
+
+    // st0: First 80 bit x87 floating point register
+    regs.write_by_id(register_id::st0, 42.42l);
+
+    // fsw: FPU status word register
+    // Bits 11 through 13 track the top of the stack
+    // For some reason we should set this to 7?
+    regs.write_by_id(register_id::fsw, std::uint16_t{0b0011100000000000});
+
+    // ftw: FPU tag word register
+    // Tracks which registers are valid (0b00), empty (0b11)), or "special"
+    // st0: valid, st1 through st7: empty
+    regs.write_by_id(register_id::ftw, std::uint16_t{0b0011111111111111});
+
+    proc->resume();
+    proc->wait_on_signal();
+
+    output = channel.read();
+    REQUIRE(to_string_view(output) == "42.42");
 }
