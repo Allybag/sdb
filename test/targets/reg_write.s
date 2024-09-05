@@ -69,10 +69,12 @@ main:
     movq %rsp, %rbp
 
     # Function body
-    # Get pid
+    # Get pid and store in r12
     movq $SYSCALL_GET_PID, %rax
     syscall
     movq %rax, %r12
+
+    trap
 
     # Print contents of rsi
     leaq hex_format(%rip), %rdi
