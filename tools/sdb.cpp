@@ -11,13 +11,17 @@
 #include <sys/ptrace.h>
 
 #include <algorithm>
+#include <charconv>
 #include <iostream>
+#include <optional>
 #include <string_view>
 #include <sstream>
 #include <string>
 #include <print>
-#include <unistd.h>
+#include <utility>
 #include <vector>
+
+#include <unistd.h>
 
 namespace
 {
@@ -39,6 +43,85 @@ bool is_prefix(std::string_view str, std::string_view of)
 {
     if (str.size() > of.size()) return false;
     return std::equal(str.begin(), str.end(), of.begin());
+}
+
+// Wrapper around std::from_chars which allows 0xblah and must use whole str
+template <class Integral>
+std::optional<Integral> to_integral(std::string_view sv, int base = 10)
+{
+    auto begin = sv.begin();
+    if (base == 16 && sv.size() > 1 && begin[0] == '0' && begin[1] == 'x')
+    {
+        begin += 2;
+    }
+
+    Integral result;
+    auto from_chars_result = std::from_chars(begin, sv.end(), result, base);
+
+    if (from_chars_result.ptr != sv.end())
+    {
+        return std::nullopt;
+    }
+
+    return result;
+}
+
+template <>
+std::optional<std::byte> to_integral(std::string_view sv, int base)
+{
+    auto as_unsigned_eight_bit = to_integral<std::uint8_t>(sv, base);
+    if (!as_unsigned_eight_bit.has_value())
+    {
+        return std::nullopt;
+    }
+
+    return static_cast<std::byte>(as_unsigned_eight_bit.value());
+}
+
+template <class Float>
+std::optional<Float> to_float(std::string_view sv)
+{
+    Float result;
+    auto from_chars_result = std::from_chars(sv.begin(), sv.end(), result);
+
+    if (from_chars_result.ptr != sv.end())
+    {
+        return std::nullopt;
+    }
+
+    return result;
+}
+
+template <std::size_t N>
+auto parse_vector(std::string_view text)
+{
+    auto error_unless = [](bool condition)
+    {
+        if (!condition)
+        {
+            sdb::error::send("Invalid format");
+        }
+    };
+
+    std::array<std::byte, N> bytes;
+    const char* c = text.data();
+    error_unless(*c++ == '[');
+
+    for (auto i = 0; i < N - 1; ++i)
+    {
+        bytes[i] = to_integral<std::byte>({c, 4}, 16).value();
+        c += 4;
+        error_unless(*c++ == ',');
+    }
+
+    // Deal with last value specially as there's no trailing comma
+    bytes[N - 1] = to_integral<std::byte>({c, 4}, 16).value();
+    c += 4;
+
+    error_unless(*c++ == ']');
+    error_unless(c == text.end());
+
+    return bytes;
 }
 
 void print_help(const std::vector<std::string>& args)
@@ -132,8 +215,71 @@ void handle_register_read(sdb::process& process, const std::vector<std::string>&
     }
 }
 
+sdb::registers::value parse_register_value(sdb::register_info info, std::string_view text)
+{
+    try
+    {
+        if (info.format == sdb::register_format::UnsignedInt)
+        {
+            switch (info.size)
+            {
+                case 1:
+                    return to_integral<std::uint8_t>(text, 16).value();
+                case 2:
+                    return to_integral<std::uint16_t>(text, 16).value();
+                case 4:
+                    return to_integral<std::uint32_t>(text, 16).value();
+                case 8:
+                    return to_integral<std::uint64_t>(text, 16).value();
+            }
+        }
+        else if (info.format == sdb::register_format::DoubleFloat)
+        {
+            return to_float<double>(text).value();
+        }
+        else if (info.format == sdb::register_format::LongDouble)
+        {
+            return to_float<long double>(text).value();
+        }
+        else if (info.format == sdb::register_format::Vector)
+        {
+            if (info.size == 8)
+            {
+                return parse_vector<8>(text);
+            }
+            else if (info.size == 16)
+            {
+                return parse_vector<16>(text);
+            }
+        }
+    }
+    catch (...)
+    {
+        sdb::error::send("Invalid format");
+    }
+
+    std::unreachable();
+}
+
 void handle_register_write(sdb::process& process, const std::vector<std::string>& args)
 {
+    if (args.size() != 4)
+    {
+        print_help({"help", "register"});
+        return;
+    }
+
+    try
+    {
+        auto info = sdb::register_info_by_name(args[2]);
+        auto value = parse_register_value(info, args[3]);
+        process.get_registers().write(info, value);
+    }
+    catch (sdb::error& err)
+    {
+        std::println("{}", err.what());
+        return;
+    }
 }
 
 void handle_register_command(sdb::process& process, const std::vector<std::string>& args)
@@ -185,7 +331,7 @@ void print_stop_reason(const sdb::process& process, sdb::stop_reason reason)
             std::print("terminated with signal {}", sigabbrev_np(reason.info));
             break;
         case sdb::process_state::Stopped:
-            std::print("stopped with signal {}", sigabbrev_np(reason.info));
+            std::print("stopped with signal {} at {:#x}", sigabbrev_np(reason.info), process.get_program_counter().addr());
             break;
     }
     std::println("");

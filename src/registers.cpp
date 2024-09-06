@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <print>
 #include <type_traits>
+#include <utility>
 
 namespace
 {
@@ -79,6 +80,8 @@ sdb::registers::value sdb::registers::read(const register_info& info) const
     {
         return from_bytes<byte128>(bytes + info.offset);
     }
+
+    std::unreachable();
 }
 
 void sdb::registers::write(const register_info& info, value val)

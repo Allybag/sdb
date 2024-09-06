@@ -1,6 +1,7 @@
 #pragma once
 
 #include <libsdb/registers.hpp>
+#include <libsdb/types.hpp>
 
 #include <sys/types.h>
 #include <signal.h>
@@ -62,6 +63,11 @@ public:
     process_state state() const { return state_; }
     registers& get_registers() { return *registers_; }
     const registers& get_registers() const { return *registers_; }
+
+    virtual_address get_program_counter() const
+    {
+        return virtual_address{get_registers().read_by_id_as<std::uint64_t>(register_id::rip)}; 
+    }
 
 private:
     process(pid_t pid, bool terminate_on_end, bool is_attached) : pid_(pid), terminate_on_end_(terminate_on_end), is_attached_{is_attached}, registers_{new registers(*this)} { }
