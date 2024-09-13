@@ -180,3 +180,110 @@ TEST_CASE("Read register", "register")
     proc->wait_on_signal();
     REQUIRE(regs.read_by_id_as<long double>(register_id::st0) == 64.125L);
 }
+
+TEST_CASE("Create breakpoint site", "breakpoint")
+{
+    auto proc = process::launch("targets/run_endlessly");
+    auto& site = proc->create_breakpoint_site(virtual_address{42});
+    REQUIRE(site.address().addr() == 42); 
+}
+
+TEST_CASE("Breakpoint site ids increase", "breakpoint")
+{
+    auto proc = process::launch("targets/run_endlessly");
+
+    auto& site1 = proc->create_breakpoint_site(virtual_address{42});
+    REQUIRE(site1.address().addr() == 42); 
+
+    auto& site2 = proc->create_breakpoint_site(virtual_address{43});
+    REQUIRE(site2.id() == site1.id() + 1);
+
+    auto& site3 = proc->create_breakpoint_site(virtual_address{44});
+    REQUIRE(site3.id() == site1.id() + 2);
+
+    auto& site4 = proc->create_breakpoint_site(virtual_address{45});
+    REQUIRE(site4.id() == site1.id() + 3);
+}
+
+TEST_CASE("Can find breakpoint site", "breakpoint") {
+    auto proc = process::launch("targets/run_endlessly");
+    const auto& cproc = proc;
+
+    proc->create_breakpoint_site(virtual_address{ 42 });
+    proc->create_breakpoint_site(virtual_address{ 43 });
+    proc->create_breakpoint_site(virtual_address{ 44 });
+    proc->create_breakpoint_site(virtual_address{ 45 });
+
+    auto& s1 = proc->breakpoint_sites().get_by_address(virtual_address{ 44 });
+    REQUIRE(proc->breakpoint_sites().contains_address(virtual_address{ 44 }));
+    REQUIRE(s1.address().addr() == 44);
+
+    auto& cs1 = cproc->breakpoint_sites().get_by_address(virtual_address{ 44 });
+    REQUIRE(cproc->breakpoint_sites().contains_address(virtual_address{ 44 }));
+    REQUIRE(cs1.address().addr() == 44);
+
+    auto& s2 = proc->breakpoint_sites().get_by_id(s1.id() + 1);
+    REQUIRE(proc->breakpoint_sites().contains_id(s1.id() + 1));
+    REQUIRE(s2.id() == s1.id() + 1);
+    REQUIRE(s2.address().addr() == 45);
+
+    auto& cs2 = proc->breakpoint_sites().get_by_id(cs1.id() + 1);
+    REQUIRE(cproc->breakpoint_sites().contains_id(cs1.id() + 1));
+
+    REQUIRE(cs2.id() == cs1.id() + 1);
+    REQUIRE(cs2.address().addr() == 45);
+}
+
+TEST_CASE("Cannot find breakpoint site", "breakpoint")
+{
+    auto proc = process::launch("targets/run_endlessly");
+    const auto& cproc = proc;
+    REQUIRE_THROWS_AS(
+        proc->breakpoint_sites().get_by_address(virtual_address{ 44 }), error);
+    REQUIRE_THROWS_AS(proc->breakpoint_sites().get_by_id(44), error);
+    REQUIRE_THROWS_AS(
+        cproc->breakpoint_sites().get_by_address(virtual_address{ 44 }), error);
+    REQUIRE_THROWS_AS(cproc->breakpoint_sites().get_by_id(44), error);
+}
+
+TEST_CASE("Breakpoint site list size and emptiness", "breakpoint")
+{
+    auto proc = process::launch("targets/run_endlessly");
+    const auto& cproc = proc;
+
+    REQUIRE(proc->breakpoint_sites().empty());
+    REQUIRE(proc->breakpoint_sites().size() == 0);
+    REQUIRE(cproc->breakpoint_sites().empty());
+    REQUIRE(cproc->breakpoint_sites().size() == 0);
+
+    proc->create_breakpoint_site(virtual_address{ 42 });
+    REQUIRE(!proc->breakpoint_sites().empty());
+    REQUIRE(proc->breakpoint_sites().size() == 1);
+    REQUIRE(!cproc->breakpoint_sites().empty());
+    REQUIRE(cproc->breakpoint_sites().size() == 1);
+
+    proc->create_breakpoint_site(virtual_address{ 43 });
+    REQUIRE(!proc->breakpoint_sites().empty());
+    REQUIRE(proc->breakpoint_sites().size() == 2);
+    REQUIRE(!cproc->breakpoint_sites().empty());
+    REQUIRE(cproc->breakpoint_sites().size() == 2);
+}
+
+TEST_CASE("Can iterate breakpoint sites", "breakpoint")
+{
+    auto proc = process::launch("targets/run_endlessly");
+    const auto& cproc = proc;
+
+    proc->create_breakpoint_site(virtual_address{ 42 });
+    proc->create_breakpoint_site(virtual_address{ 43 });
+    proc->create_breakpoint_site(virtual_address{ 44 });
+    proc->create_breakpoint_site(virtual_address{ 45 });
+
+    proc->breakpoint_sites().for_each([addr = 42](auto& site) mutable {
+        REQUIRE(site.address().addr() == addr++);
+    });
+
+    cproc->breakpoint_sites().for_each([addr = 42](auto& site) mutable {
+        REQUIRE(site.address().addr() == addr++);
+    });
+}

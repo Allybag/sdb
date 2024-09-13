@@ -2,6 +2,8 @@
 
 #include <libsdb/registers.hpp>
 #include <libsdb/types.hpp>
+#include <libsdb/breakpoint_site.hpp>
+#include <libsdb/stoppoint_collection.hpp>
 
 #include <sys/types.h>
 #include <signal.h>
@@ -9,6 +11,7 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <vector>
 
 #ifndef linux
 // Bit dubious, allow me to compile on MacOS
@@ -64,6 +67,17 @@ public:
     registers& get_registers() { return *registers_; }
     const registers& get_registers() const { return *registers_; }
 
+    breakpoint_site& create_breakpoint_site(virtual_address address);
+
+    stoppoint_collection<breakpoint_site>& breakpoint_sites()
+    {
+        return breakpoint_sites_;
+    }
+    const stoppoint_collection<breakpoint_site>& breakpoint_sites() const
+    {
+        return breakpoint_sites_;
+    }
+
     virtual_address get_program_counter() const
     {
         return virtual_address{get_registers().read_by_id_as<std::uint64_t>(register_id::rip)}; 
@@ -79,5 +93,6 @@ private:
     bool is_attached_ = true;
     process_state state_ = process_state::Stopped;
     std::unique_ptr<registers> registers_;
+    stoppoint_collection<breakpoint_site> breakpoint_sites_;
 };
 }
