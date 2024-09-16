@@ -92,16 +92,17 @@ std::optional<Float> to_float(std::string_view sv)
     return result;
 }
 
+void error_unless(bool condition)
+{
+    if (!condition)
+    {
+        sdb::error::send("Invalid format");
+    }
+};
+
 template <std::size_t N>
 auto parse_vector(std::string_view text)
 {
-    auto error_unless = [](bool condition)
-    {
-        if (!condition)
-        {
-            sdb::error::send("Invalid format");
-        }
-    };
 
     std::array<std::byte, N> bytes;
     const char* c = text.data();
@@ -124,6 +125,33 @@ auto parse_vector(std::string_view text)
     return bytes;
 }
 
+auto parse_vector(std::string_view text)
+{
+    std::vector<std::byte> bytes;
+    const char* c = text.data();
+
+    error_unless(*c++ == '[');
+
+    while (*c != ']')
+    {
+        // Read four characters from c as a hex byte
+        bytes.push_back(to_integral<std::byte>({c, 4}, 16).value());
+        c += 4;
+
+        if (*c == ',')
+        {
+            ++c;
+        }
+        else
+        {
+            error_unless(*c == ']');
+        }
+    }
+
+    error_unless(++c == text.end());
+    return bytes;
+}
+
 void print_help(const std::vector<std::string>& args)
 {
     if (args.size() == 1)
@@ -131,6 +159,7 @@ void print_help(const std::vector<std::string>& args)
         std::println(R"(Available commands:
             breakpoint - Commands for operating on breakpoints
             continue   - Resume the process
+            memory     - Commands for operating on memory
             register   - Commands for operating on registers
             step       - Step over and execute a single instruction
         )");
@@ -145,6 +174,14 @@ void print_help(const std::vector<std::string>& args)
             set <address>
         )");
     }
+    else if (is_prefix(args[1], "memory"))
+    {
+        std::println(R"(Available commands:
+            read <address>
+            read <address> <number of bytes to read>
+            write <address> <bytes>
+        )");
+    }
     else if (is_prefix(args[1], "register"))
     {
         std::println(R"(Available commands:
@@ -157,6 +194,79 @@ void print_help(const std::vector<std::string>& args)
     else
     {
         std::println("No help available");
+    }
+}
+
+void handle_memory_read_command(sdb::process& process, const std::vector<std::string>& args)
+{
+    auto address = to_integral<std::uint64_t>(args[2], 16);
+    if (!address)
+    {
+        sdb::error::send("Invalid address format");
+    }
+
+    auto read_byte_count = 32;
+    if (args.size() == 4) 
+    {
+        auto bytes_arg = to_integral<std::size_t>(args[3]);
+        if (!bytes_arg)
+        {
+            sdb::error::send("Invalid number of bytes to read");
+        }
+        read_byte_count = *bytes_arg;
+    }
+
+    auto data = process.read_memory(sdb::virtual_address{address.value()}, read_byte_count);
+
+    for (std::size_t i = 0; i < data.size(); i += 16)
+    {
+        auto start = data.begin() + i;
+        auto end = data.begin() + std::min(i + 16, data.size());
+        std::print("{:#016x}: ", address.value() + i);
+        for (auto it = start; it != end; it++)
+        {
+            std::print(" {:02x}", static_cast<std::uint8_t>(*it));
+        }
+        std::println();
+    }
+}
+void handle_memory_write_command(sdb::process& process, const std::vector<std::string>& args)
+{
+    if (args.size() != 4)
+    {
+        print_help({"help", "memory"});
+        return;
+    }
+
+    auto address = to_integral<std::uint64_t>(args[2], 16);
+    if (!address.has_value())
+    {
+        sdb::error::send("Invalid address format");
+    }
+
+    auto data = parse_vector(args[3]);
+    process.write_memory(sdb::virtual_address{address.value()}, {data.data(), data.size()});
+}
+
+void handle_memory_command(sdb::process& process, const std::vector<std::string>& args)
+{
+    if (args.size() < 3)
+    {
+        print_help({"help", "memory"});
+        return;
+    }
+
+    if (is_prefix(args[1], "read"))
+    {
+        handle_memory_read_command(process, args);
+    }
+    else if (is_prefix(args[1], "write"))
+    {
+        handle_memory_write_command(process, args);
+    }
+    else
+    {
+        print_help({"help", "memory"});
     }
 }
 
@@ -436,6 +546,10 @@ void handle_command(std::unique_ptr<sdb::process>& process, std::string_view lin
         process->resume();
         auto reason = process->wait_on_signal();
         print_stop_reason(*process, reason);
+    }
+    else if (is_prefix(command, "memory"))
+    {
+        handle_memory_command(*process, args);
     }
     else if (is_prefix(command, "register"))
     {

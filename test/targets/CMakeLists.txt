@@ -7,7 +7,7 @@ endfunction()
 
 function(add_test_asm_target name)
     add_executable(${name} "${name}.s")
-    set_property(TARGET ${name} PROPERTY POSITION_INDEPENDENT_CODE TRUE)
+    target_link_options(${name} PRIVATE -pie)
     add_dependencies(tests ${name})
 endfunction()
 

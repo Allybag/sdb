@@ -1,10 +1,13 @@
 #include <libsdb/process.hpp>
-#include <libsdb/pipe.hpp>
+
+#include <libsdb/bit.hpp>
 #include <libsdb/error.hpp>
+#include <libsdb/pipe.hpp>
 
 #include <sys/personality.h>
 #include <sys/ptrace.h>
 #include <sys/types.h>
+#include <sys/uio.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -290,3 +293,50 @@ sdb::breakpoint_site& sdb::process::create_breakpoint_site(virtual_address addre
     return breakpoint_sites_.push(std::unique_ptr<breakpoint_site>(new breakpoint_site(*this, address)));
 }
 
+std::vector<std::byte> sdb::process::read_memory(sdb::virtual_address address, std::size_t amount) const
+{
+    std::vector<std::byte> result(amount);
+
+    iovec local_descriptor{result.data(), result.size()};
+    iovec remote_descriptor{reinterpret_cast<void*>(address.addr()), amount};
+
+    int local_count{1};
+    int remote_count{1};
+    int flags{0}; // Always set to 0 for process_vm_readv
+    if (process_vm_readv(pid_, &local_descriptor, local_count, &remote_descriptor, remote_count, flags) < 0)
+    {
+        error::send_errno("Could not read process memory");
+    }
+
+    return result;
+}
+
+void sdb::process::write_memory(sdb::virtual_address address, span<const std::byte> data)
+{
+    std::size_t bytes_written = 0;
+    while (bytes_written < data.size())
+    {
+        auto remaining = data.size() - bytes_written;
+        std::uint64_t word; // The size ptrace allows to write
+        if (remaining >= sizeof(word))
+        {
+            word = from_bytes<std::uint64_t>(data.begin() + bytes_written);
+        }
+        else
+        {
+            // We can only write 8 bytes, so if writing less we must first
+            // read 8 bytes, and write back in the existing bytes + our data
+            auto read = read_memory(address + bytes_written, sizeof(word));
+            auto word_data = reinterpret_cast<char*>(&word);
+            std::memcpy(word_data, data.begin() + bytes_written, remaining);
+            std::memcpy(word_data + remaining, read.data() + remaining, sizeof(word) - remaining);
+        }
+
+        if (ptrace(PTRACE_POKEDATA, pid_, address + bytes_written, word) < 0)
+        {
+            error::send_errno("Could not write process memory");
+        }
+
+        bytes_written += sizeof(word);
+    }
+}

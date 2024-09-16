@@ -76,6 +76,17 @@ public:
 
     breakpoint_site& create_breakpoint_site(virtual_address address);
 
+
+    std::vector<std::byte> read_memory(virtual_address address, std::size_t amount) const;
+    void write_memory(virtual_address address, span<const std::byte> data);
+
+    template <typename T>
+    T read_memory_as(virtual_address address) const
+    {
+        auto data = read_memory(address, sizeof(T));
+        return from_bytes<T>(data.data());
+    }
+
     stoppoint_collection<breakpoint_site>& breakpoint_sites()
     {
         return breakpoint_sites_;
