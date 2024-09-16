@@ -66,7 +66,7 @@ virtual_address get_load_address(pid_t pid, std::int64_t offset)
 
 TEST_CASE("Launching", "process")
 {
-    auto proc = process::launch("yes");
+    auto proc = process::launch("targets/run_endlessly");
     REQUIRE(process_exists(proc->pid()));
 }
 
@@ -362,4 +362,33 @@ TEST_CASE("Can remove breakpoint sites", "breakpoint")
     proc->breakpoint_sites().remove_by_id(site.id());
     proc->breakpoint_sites().remove_by_address(virtual_address{ 43 });
     REQUIRE(proc->breakpoint_sites().empty());
+}
+
+TEST_CASE("Reading and writing memory", "memory")
+{
+    bool close_on_exec = false;
+    sdb::pipe channel(close_on_exec);
+
+    auto proc = process::launch("targets/memory", true, channel.get_write());
+    channel.close_write();
+
+    proc->resume();
+    proc->wait_on_signal();
+
+    auto data_pointer = from_bytes<std::uint64_t>(channel.read().data());
+    auto data_vec = proc->read_memory(virtual_address{data_pointer}, 8);
+    auto data = from_bytes<std::uint64_t>(data_vec.data());
+    REQUIRE(data == 0xcafecafe);
+
+    proc->resume();
+    proc->wait_on_signal();
+
+    auto str_pointer = from_bytes<std::uint64_t>(channel.read().data());
+    proc->write_memory(virtual_address{str_pointer}, {as_bytes("Hello, sdb!"), 12});
+
+    proc->resume();
+    proc->wait_on_signal();
+
+    auto read = channel.read();
+    REQUIRE(to_string_view(read) == "Hello, sdb!");
 }
