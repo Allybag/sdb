@@ -56,16 +56,23 @@ public:
     static std::unique_ptr<process> launch(std::filesystem::path path, bool attach = true, std::optional<int> stdout_replacement = std::nullopt);
     static std::unique_ptr<process> attach(pid_t pid);
 
-    void resume();
-    stop_reason wait_on_signal();
     void write_user_area(std::size_t offset, std::uint64_t data);
     void write_fprs(const user_fpregs_struct& fprs);
     void write_gprs(const user_regs_struct& fprs);
+
+    void resume();
+    stop_reason wait_on_signal();
+    sdb::stop_reason step_instruction();
 
     pid_t pid() const { return pid_; }
     process_state state() const { return state_; }
     registers& get_registers() { return *registers_; }
     const registers& get_registers() const { return *registers_; }
+
+    void set_program_counter(virtual_address address)
+    {
+        get_registers().write_by_id(register_id::rip, address.addr());
+    }
 
     breakpoint_site& create_breakpoint_site(virtual_address address);
 

@@ -132,6 +132,7 @@ void print_help(const std::vector<std::string>& args)
             breakpoint - Commands for operating on breakpoints
             continue   - Resume the process
             register   - Commands for operating on registers
+            step       - Step over and execute a single instruction
         )");
     }
     else if (is_prefix(args[1], "breakpoint"))
@@ -439,6 +440,11 @@ void handle_command(std::unique_ptr<sdb::process>& process, std::string_view lin
     else if (is_prefix(command, "register"))
     {
         handle_register_command(*process, args);
+    }
+    else if (is_prefix(command, "step"))
+    {
+        auto reason = process->step_instruction();
+        print_stop_reason(*process, reason);
     }
     else
     {

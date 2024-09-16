@@ -147,6 +147,26 @@ sdb::process::~process()
 
 void sdb::process::resume()
 {
+    auto program_counter = get_program_counter();
+    if (breakpoint_sites_.enabled_stoppoint_at_address(program_counter))
+    {
+        auto& breakpoint = breakpoint_sites_.get_by_address(program_counter);
+        breakpoint.disable();
+
+        if (ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr) < 0)
+        {
+            error::send_errno("Could not single step");
+        }
+
+        // Wait until the process has executed the single instruction
+        int wait_status;
+        if (waitpid(pid_, &wait_status, 0) < 0)
+        {
+            error::send_errno("Could not waitpid");
+        }
+        breakpoint.enable();
+    }
+
     if (ptrace(PTRACE_CONT, pid_, nullptr, nullptr) < 0)
     {
         error::send_errno("Could not resume");
@@ -170,6 +190,39 @@ sdb::stop_reason sdb::process::wait_on_signal()
     if (is_attached_ && state_ == process_state::Stopped)
     {
         read_all_registers();
+
+        // Reset the program counter to before we executed int3 instruction
+        auto instruction_start = get_program_counter() - 1;
+        if (reason.info == SIGTRAP && breakpoint_sites_.enabled_stoppoint_at_address(instruction_start))
+        {
+            set_program_counter(instruction_start); 
+        }
+    }
+
+    return reason;
+}
+
+sdb::stop_reason sdb::process::step_instruction()
+{
+    std::optional<sdb::breakpoint_site*> disabled_breakpoint; 
+    auto program_counter = get_program_counter();
+    if (breakpoint_sites_.enabled_stoppoint_at_address(program_counter))
+    {
+        auto& breakpoint = breakpoint_sites_.get_by_address(program_counter);
+        breakpoint.disable();
+        disabled_breakpoint = &breakpoint;
+    }
+
+    if (ptrace(PTRACE_SINGLESTEP, pid_, nullptr, nullptr) < 0)
+    {
+        error::send_errno("Could not single step");
+    }
+
+    auto reason = wait_on_signal();
+
+    if (disabled_breakpoint.has_value())
+    {
+        disabled_breakpoint.value()->enable();
     }
 
     return reason;
@@ -231,7 +284,7 @@ sdb::breakpoint_site& sdb::process::create_breakpoint_site(virtual_address addre
 {
     if (breakpoint_sites_.contains_address(address))
     {
-        error::send(std::format("Breakpoint site already created at {}", address.addr()));
+        error::send(std::format("Breakpoint site already created at 0x{:#x}", address.addr()));
     }
 
     return breakpoint_sites_.push(std::unique_ptr<breakpoint_site>(new breakpoint_site(*this, address)));
