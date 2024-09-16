@@ -325,8 +325,10 @@ std::unique_ptr<sdb::process> attach(int argc, const char** argv)
     }
     else
     {
-        const char* program_path = argv[1];
-        return sdb::process::launch(program_path);
+        auto program_path = argv[1];
+        auto proc = sdb::process::launch(program_path);
+        std::println("Launched process with pid {}", proc->pid());
+        return proc;
     }
 }
 

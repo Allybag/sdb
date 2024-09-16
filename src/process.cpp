@@ -2,6 +2,7 @@
 #include <libsdb/pipe.hpp>
 #include <libsdb/error.hpp>
 
+#include <sys/personality.h>
 #include <sys/ptrace.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -53,6 +54,9 @@ std::unique_ptr<sdb::process> sdb::process::launch(std::filesystem::path path, b
     {
         // We are in the child process
         channel.close_read();
+
+        // Call before exec to disable Address Space Layout Randomisation
+        personality(ADDR_NO_RANDOMIZE);
 
         if (stdout_replacement.has_value())
         {
