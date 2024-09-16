@@ -129,8 +129,19 @@ void print_help(const std::vector<std::string>& args)
     if (args.size() == 1)
     {
         std::println(R"(Available commands:
-            continue - Resume the process
-            register - Commands for operating on registers
+            breakpoint - Commands for operating on breakpoints
+            continue   - Resume the process
+            register   - Commands for operating on registers
+        )");
+    }
+    else if (is_prefix(args[1], "breakpoint"))
+    {
+        std::println(R"(Available commands:
+            list
+            delete <id>
+            disable <id>
+            enable <id>
+            set <address>
         )");
     }
     else if (is_prefix(args[1], "register"))
@@ -199,7 +210,7 @@ void handle_register_read(sdb::process& process, const std::vector<std::string>&
     {
         try
         {
-            auto info = sdb::register_info_by_name(args[2]); 
+            auto info = sdb::register_info_by_name(args[2]);
             auto value = process.get_registers().read(info);
             std::println("{}:\t{}", info.name, std::visit(format, value));
         }
@@ -337,20 +348,91 @@ void print_stop_reason(const sdb::process& process, sdb::stop_reason reason)
     std::println("");
 }
 
+void handle_breakpoint_command(sdb::process& process, const std::vector<std::string>& args)
+{
+    if (args.size() < 2)
+    {
+        print_help({"help", "breakpoint"});
+        return;
+    }
+
+    auto command = args[1];
+
+    if (is_prefix(command, "list"))
+    {
+        if (process.breakpoint_sites().empty())
+        {
+            std::println("No breakpoints set");
+        }
+        else
+        {
+            std::println("Current breakpoints:");
+            process.breakpoint_sites().for_each([] (auto& site) {
+                std::println("{}: address = {:#x}, {}", site.id(), site.address().addr(), site.is_enabled() ? "enabled" : "disabled");
+            });
+        }
+        return;
+    }
+
+    // All subcommands other than list take an additional argument
+    if (args.size() < 3)
+    {
+        print_help({"help", "breakpoint"});
+        return;
+    }
+
+    if (is_prefix(command, "set"))
+    {
+        auto address = to_integral<std::uint64_t>(args[2], 16);
+        if (!address)
+        {
+            std::println("Breakpoint command expects address in 0x89ab format");
+            return;
+        }
+
+        process.create_breakpoint_site(sdb::virtual_address{*address}).enable();
+        return;
+    }
+
+    auto id = to_integral<sdb::breakpoint_site::id_type>(args[2]);
+    if (!id.has_value())
+    {
+        std::println("Command expects breakpoint id");
+    }
+
+    if (is_prefix(command, "enable"))
+    {
+        process.breakpoint_sites().get_by_id(id.value()).enable();
+    }
+    else if (is_prefix(command, "disable"))
+    {
+        process.breakpoint_sites().get_by_id(id.value()).disable();
+    }
+    else if (is_prefix(command, "delete"))
+    {
+        process.breakpoint_sites().remove_by_id(id.value());
+    }
+
+}
+
 void handle_command(std::unique_ptr<sdb::process>& process, std::string_view line)
 {
     auto args = split(line, ' ');
     auto command = args[0];
 
-    if (is_prefix(command, "continue"))
+    if (is_prefix(command, "help"))
+    {
+        print_help(args);
+    }
+    else if (is_prefix(command, "breakpoint"))
+    {
+        handle_breakpoint_command(*process, args);
+    }
+    else if (is_prefix(command, "continue"))
     {
         process->resume();
         auto reason = process->wait_on_signal();
         print_stop_reason(*process, reason);
-    }
-    else if (is_prefix(command, "help"))
-    {
-        print_help(args);
     }
     else if (is_prefix(command, "register"))
     {
