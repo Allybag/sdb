@@ -78,6 +78,7 @@ public:
 
 
     std::vector<std::byte> read_memory(virtual_address address, std::size_t amount) const;
+    std::vector<std::byte> read_memory_without_traps(virtual_address address, std::size_t amount) const;
     void write_memory(virtual_address address, span<const std::byte> data);
 
     template <typename T>

@@ -136,6 +136,21 @@ const Stoppoint& stoppoint_collection<Stoppoint>::get_by_address(virtual_address
 }
 
 template <typename Stoppoint>
+std::vector<Stoppoint*> stoppoint_collection<Stoppoint>::get_in_region(virtual_address low, virtual_address high) const
+{
+    std::vector<Stoppoint*> result{};
+    for (auto& site : stoppoints_)
+    {
+        if (site->in_range(low, high))
+        {
+            result.push_back(&*site);
+        }
+    }
+
+    return result;
+}
+
+template <typename Stoppoint>
 void stoppoint_collection<Stoppoint>::remove_by_id(typename Stoppoint::id_type id)
 {
     auto it = find_by_id(id);

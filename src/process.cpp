@@ -311,6 +311,22 @@ std::vector<std::byte> sdb::process::read_memory(sdb::virtual_address address, s
     return result;
 }
 
+std::vector<std::byte> sdb::process::read_memory_without_traps(sdb::virtual_address address, std::size_t amount) const
+{
+    auto memory = read_memory(address, amount);
+
+    auto sites = breakpoint_sites_.get_in_region(address, address + amount);
+    for (auto site : sites)
+    {
+        // For each breakpoint where we overwrote the instruction with int3,
+        // pretend it still has the original instruction
+        auto offset = site->address() - address.addr();
+        memory[offset.addr()] = site->saved_date_;
+    }
+
+    return memory;
+}
+
 void sdb::process::write_memory(sdb::virtual_address address, span<const std::byte> data)
 {
     std::size_t bytes_written = 0;

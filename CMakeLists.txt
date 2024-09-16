@@ -12,6 +12,8 @@ include(CTest)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(readline REQUIRED IMPORTED_TARGET readline)
 
+find_package(zydis CONFIG REQUIRED)
+
 add_subdirectory("src")
 add_subdirectory("tools")
 
